@@ -1,4 +1,4 @@
-BottleNet - Find network bottlenecks 
+BottleNet - Find Network Bottlenecks
 ----------------
 BottleNet supports two types of networking topologies.
 - Mesh Network (default) - Find the slowest nodes in a flat network.
