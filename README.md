@@ -45,7 +45,7 @@ Slowest clients in your network:
 ### Help
 
 ```
-$> bottlenet --help
+$ bottlenet --help
 bottlenet [IP] [-c|-s]
 
 --client-network, -c      bottlenet on the client node
