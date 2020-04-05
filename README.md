@@ -1,80 +1,53 @@
-Bottlenet - Find network bottlenecks 
+BottleNet - Find network bottlenecks 
 ----------------
+BottleNet supports two types of networking topologies.
+- Mesh Network (default) - Find the slowest nodes in a flat network.
+- Client-Server Network - Find the slowest nodes in a client-server network. 
 
-Bottlenet has two modes
-- mesh
-- client/server
-
-### Mesh Network
-
+#### Mesh Network
+Start the bottlenet cli on one of the nodes. The first node where you start the bottlenet cli will produce a single consolidated report on the console and also act as a coordinator for the rest of the nodes.
+##### Example
 ```sh
-# start the mesh console on node [1] with addr server-ip:8098
-$> bottlenet 
-started the network bottleneck test server. waiting for clients to connect.
+$ bottlenet 
+Run the following command on each of the other nodes.
+  $ bottlenet THIS-SERVER-IP:7007
 
-execute the following command on each of the other nodes (in case of this example, nodes: [2], [3], [4])
-  
-  bottlenet server-ip:8098
+Total Nodes      :  16
+Total Throughput : 12.10 GB/s (max), 7.25 GB/s (avg)
 
-total nodes       :  4
-total throughput  :  max: 12 GB/s          avg: 7.25 GB/s
-bottleneck        :  node1
-
-node1   3.00  GB/s  out of  12 GB/s
-node2   9.00  GB/s  out of  12 GB/s
-node3   6.00  GB/s  out of  12 GB/s
-node4   12.00 GB/s  out of  12 GB/s
-
-[topology] // representation for this example. This is not a part of the output 
-
-                        [1]*------*2
-			 | \____/ |
-			 | /    \ |
-			 3*-------*4
-
-[1] - origin node
+Slowest nodes in your network:
+1. NODE13  3.00 GB/s out of 12 GB/s
+2. NODE5   7.00 GB/s out of 12 GB/s
 ```
+#### Client-Server Mode
+Start the bottlenet cli on one of the server nodes (use -s) or the client nodes (use -c). The first node where you start the bottlenet cli will produce a single consolidated report on the console and also act as a coordinaor for the rest of the server and client nodes.
 
-### Client/Server Mode
-
+##### Example
 ```sh
-# start the server+console on node bottlenet:8098
 $> bottlenet -s
-started the network bottleneck test server. waiting for clients to connect.
+Run the following command on each of the server nodes
+  $ bottlenet THIS-SERVER-IP:7007 -s
+and client nodes.
+  $ bottlenet THIS-SERVER-IP:7007 -c
 
-execute the following command on each of the server nodes
+Total Nodes      :  8 Servers, 8 Clients
+Total Throughput : 5.40 GB/s (max), 6.10 GB/s (avg)
 
-  bottlenet server-ip:8098 -s
-  
-execute the following command on each of the client nodes
-  
-  bottlenet server-ip:8098 -c
+Slowest servers in your network:
+1. SERVER-3  0.50 GB/s out of 2.10 GB/s
+2. SERVER-8  1.11 GB/s out of 2.10 GB/s
 
-[servers]
-node1   3.00  GB/s  out of  12 GB/s
-node2   9.00  GB/s  out of  12 GB/s
-
-[clients]
-node3   6.00  GB/s  out of  12 GB/s
-node4   12.00 GB/s  out of  12 GB/s
-
-[topology] // representation for this example. This is not a part of the output 
-
-                        [1]*------*2
-			 | \____/ |
-			 | /    \ |
-			 3*-------*4
-
-[1] - origin node
+Slowest clients in your network:
+1. CLIENT-2  201.00 MB/s out of 1.01 GB/s
+2. CLIENT-7  500.00 MB/s out of 1.01 GB/s
 ```
 
 ### Help
 
 ```sh
 $> bottlenet --help
+bottlenet [IP] [-c|-s]
 
-bottlenet [IP] [-c | -s]
-
---client-network, -c      bottlenet running on the client network
---server-network, -s      bottlenet running on the server network
+--client-network, -c      bottlenet on the client node
+--server-network, -s      bottlenet on the server node
 ```
