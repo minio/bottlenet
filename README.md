@@ -7,7 +7,7 @@ BottleNet supports two types of networking topologies.
 #### Mesh Network
 Start the bottlenet cli on one of the nodes. The first node where you start the bottlenet cli will produce a single consolidated report on the console and also act as a coordinator for the rest of the nodes.
 ##### Example
-```sh
+```
 $ bottlenet 
 Run the following command on each of the other nodes.
   $ bottlenet THIS-SERVER-IP:7007
@@ -23,7 +23,7 @@ Slowest nodes in your network:
 Start the bottlenet cli on one of the server nodes (use -s) or the client nodes (use -c). The first node where you start the bottlenet cli will produce a single consolidated report on the console and also act as a coordinaor for the rest of the server and client nodes.
 
 ##### Example
-```sh
+```
 $> bottlenet -s
 Run the following command on each of the server nodes
   $ bottlenet THIS-SERVER-IP:7007 -s
