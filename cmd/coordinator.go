@@ -1,3 +1,20 @@
+/*
+ * Bottlenet (C) 2020 MinIO, Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package cmd
 
 import (
@@ -23,11 +40,6 @@ Run the following command on each of the other nodes.
   $ bottlenet THIS-SERVER-IP
 `
 
-var mid = `where THIS-SERVER-IP is one of`
-
-var meshNodeMessage = `
-Connecting to COORDINATOR-IP:PORT...
-`
 var (
 	firstPeer         = false
 	selfStartCtx      context.Context
@@ -41,27 +53,6 @@ func init() {
 func coordinate(ctx context.Context) error {
 	printCoordinatorMessage()
 
-	_ = func() {
-		firstPeerSpinner := spinner(ctx, "waiting for first peer to join")
-		lastPeerSpinner := spinner(ctx, "press enter to start the tests")
-
-		lastPeer := false
-		go func() {
-			readByte := make([]byte, 1)
-			os.Stdin.Read(readByte)
-			lastPeer = true
-		}()
-
-		for {
-			if ctx.Err() != nil {
-				return
-			}
-			if firstPeerSpinner(firstPeer) &&
-				lastPeerSpinner(lastPeer) {
-				return
-			}
-		}
-	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/join", listenJoin(ctx))
 	mux.HandleFunc("/start", listenStart(ctx))
@@ -91,8 +82,7 @@ func doStart(ctx context.Context, coordinator string) (map[string][]*node, error
 	if err != nil {
 		return perfMap, err
 	}
-	//fmt.Println(string(respBody))
-
+	
 	if err := json.Unmarshal(respBody, &perfMap); err != nil {
 		return perfMap, err
 	}
@@ -295,7 +285,7 @@ func printResults(results map[string][]*node) {
 	max := float64(0)
 	avg := float64(0)
 	for _, k := range stackRankMap {
-		k = k / 3.0
+		k = k / float64(len(stackRankMap))
 		avg = avg + k
 		if k > max {
 			max = k
@@ -337,17 +327,6 @@ loop:
 func printCoordinatorMessage() {
 	coordMsg := strings.ReplaceAll(coordinatorMessage, "THIS-SERVER-PORT", fmt.Sprintf("%d", bottlenetPort))
 	fmt.Printf("%s\n", strings.ReplaceAll(coordMsg, "THIS-SERVER-IP", getLocalIPs()[0]))
-	/*	sb := strings.Builder{}
-		sb.WriteString(coordMsg)
-
-		ips := getLocalIPs()
-
-		for _, ip := range ips {
-			sb.WriteString("\n    ")
-			sb.WriteString(ip)
-		}
-		fmt.Println(sb.String())
-	*/
 }
 
 func getLocalIPs() []string {
