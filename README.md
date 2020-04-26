@@ -9,8 +9,10 @@ Start the bottlenet cli on one of the nodes. The first node where you start the 
 ##### Example
 ```
 $ bottlenet 
+
 Run the following command on each of the other nodes.
-  $ bottlenet THIS-SERVER-IP:7007
+
+$ bottlenet THIS-SERVER-IP:7007
 
 Total Nodes      :  16
 Total Throughput : 12.10 GB/s (max), 7.25 GB/s (avg)
@@ -19,6 +21,7 @@ Slowest nodes in your network:
 1. NODE13  3.00 GB/s out of 12 GB/s
 2. NODE5   7.00 GB/s out of 12 GB/s
 ```
+
 #### Client-Server Mode
 Start the bottlenet cli on one of the server nodes (use -s) or the client nodes (use -c). The first node where you start the bottlenet cli will produce a single consolidated report on the console and also act as a coordinaor for the rest of the server and client nodes.
 
