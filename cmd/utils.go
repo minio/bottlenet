@@ -20,9 +20,9 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"time"
-	"io"
 
 	"github.com/fatih/color"
 	"github.com/minio/minio/pkg/console"
@@ -125,19 +125,19 @@ type networkOverloadedErr struct{}
 var networkOverloaded networkOverloadedErr
 
 func (n networkOverloadedErr) Error() string {
-        return "network overloaded"
+	return "network overloaded"
 }
 
 type progressReader struct {
-        r            io.Reader
-        progressChan chan int64
+	r            io.Reader
+	progressChan chan int64
 }
 
 func (p *progressReader) Read(b []byte) (int, error) {
-        n, err := p.r.Read(b)
-        if err != nil && err != io.EOF {
-                return n, err
-        }
-        p.progressChan <- int64(n)
-        return n, err
+	n, err := p.r.Read(b)
+	if err != nil && err != io.EOF {
+		return n, err
+	}
+	p.progressChan <- int64(n)
+	return n, err
 }

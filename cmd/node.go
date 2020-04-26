@@ -34,7 +34,7 @@ var (
 
 func init() {
 	peers = []*node{
-		&node{
+		{
 			NodeType: nodeTypeSelf,
 			Addr:     getLocalIPs()[0],
 		},
@@ -135,6 +135,6 @@ func updateView() error {
 
 	console.Printf("Total nodes      : %d\n\n", len(peers))
 	viewLineCount = 2
-	
+
 	return nil
 }

@@ -28,11 +28,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 	"sort"
-	
-	"github.com/minio/minio/pkg/console"
+	"strings"
+
 	"github.com/dustin/go-humanize"
+	"github.com/minio/minio/pkg/console"
 )
 
 var coordinatorMessage = `
@@ -82,7 +82,7 @@ func doStart(ctx context.Context, coordinator string) (map[string][]*node, error
 	if err != nil {
 		return perfMap, err
 	}
-	
+
 	if err := json.Unmarshal(respBody, &perfMap); err != nil {
 		return perfMap, err
 	}
@@ -198,7 +198,6 @@ func listenJoin(ctx context.Context) func(w http.ResponseWriter, r *http.Request
 		go runTest()
 		<-r.Context().Done()
 		removePeer(p)
-		return
 	}
 }
 
@@ -266,7 +265,7 @@ func printResults(results map[string][]*node) {
 		stackRankMap[kout] = nodeAvgSum
 	}
 	// viewLineCount += 3
-	
+
 	stackRankKeys := []string{}
 
 	for i := range stackRankMap {
@@ -280,7 +279,7 @@ func printResults(results map[string][]*node) {
 	})
 
 	console.RewindLines(1)
-	viewLineCount -= 1
+	viewLineCount--
 
 	max := float64(0)
 	avg := float64(0)
@@ -291,13 +290,13 @@ func printResults(results map[string][]*node) {
 			max = k
 		}
 	}
-	
+
 	avg = avg / float64(len(stackRankKeys))
 	fmt.Printf("Total Throughput : %s/s (max)  %s/s (avg) \n\n", humanize.IBytes(uint64(max)), humanize.IBytes(uint64(avg)))
-	
+
 	fmt.Printf("Slowest nodes in your network:\n")
 	// viewLineCount += 1
-	
+
 	for n, k := range stackRankKeys {
 		s := stackRankMap[k]
 		ks := k + strings.Repeat(" ", 14-len(k))
@@ -320,8 +319,6 @@ loop:
 		console.RewindLines(1)
 	}
 	goto loop
-
-	return
 }
 
 func printCoordinatorMessage() {

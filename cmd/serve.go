@@ -111,7 +111,7 @@ func doDispatch(ctx context.Context, addr string, remotes []*node) error {
 	}
 
 	//fmt.Println(string(respBody))
-	
+
 	return json.Unmarshal(respBody, &remotes)
 }
 

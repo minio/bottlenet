@@ -18,10 +18,10 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"context"
-	
+
 	"github.com/spf13/cobra"
 )
 
@@ -36,9 +36,9 @@ var bottlenetCmd = &cobra.Command{
 }
 
 var (
-	clientMode    bool   = false
-	serverMode    bool   = false
-	bottlenetPort int = 7007
+	clientMode    bool = false
+	serverMode    bool = false
+	bottlenetPort int  = 7007
 )
 
 func init() {
