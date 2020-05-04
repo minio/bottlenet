@@ -26,45 +26,27 @@ import (
 )
 
 var bottlenetCmd = &cobra.Command{
-	Use: fmt.Sprintf("%s [IP...] [-a]", os.Args[0]),
+	Use: fmt.Sprintf("%s [IP...] [-c|-s]", os.Args[0]),
 	RunE: func(c *cobra.Command, args []string) error {
 		return bottlenetEntrypoint(context.Background(), args)
 	},
 	DisableFlagsInUseLine: true,
 	SilenceUsage:          true,
 	SilenceErrors:         true,
-	Long: `
-Bottlenet finds bottlenecks in your cluster
-
-Steps to find bottlenecks using bottlenet:
-1. Run 1 instance of bottlenet on control node, where output will be collected:
-
-    $>_ bottlenet 
-
-2. Run 1 instance of bottlenet on each of the peer nodes:
-
-    $>_ bottlenet CONTROL-SERVER:IP 
-
-Once all the peer nodes have been added, press 'y' on the prompt (on control node) to start the tests
-
-In order to bind bottlenet to specific interface and port
-
-    $>_ bottlenet --adddress IP:PORT
-
-Note: --address can be applied to both control and peer nodes
-
-`,
 }
 
 var (
-	address = ":7007"
+	clientMode    bool = false
+	serverMode    bool = false
+	bottlenetPort int  = 7007
 )
 
 func init() {
-	bottlenetCmd.Flags().StringVarP(&address, "address", "a", address, "listen address")
+	bottlenetCmd.Flags().BoolVarP(&clientMode, "client-network", "c", false, "bottlenet on the client node")
+	bottlenetCmd.Flags().BoolVarP(&serverMode, "server-network", "s", false, "bottlenet on the server node")
+	bottlenetCmd.Flags().IntVarP(&bottlenetPort, "port", "p", bottlenetPort, "listen on this port")
 }
 
-// Execute runs the binary
 func Execute() error {
 	return bottlenetCmd.Execute()
 }

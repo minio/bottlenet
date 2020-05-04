@@ -19,7 +19,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -33,22 +32,6 @@ const (
 	dot   = "●"
 	check = "✔"
 )
-
-func stringify(data interface{}) string {
-	return fmt.Sprintf("%v", data)
-}
-
-func errorify(err error) []byte {
-	return []byte(err.Error())
-}
-
-func jsonify(data interface{}) string {
-	res, err := json.MarshalIndent(data, "", " ")
-	if err != nil {
-		panic(err)
-	}
-	return string(res)
-}
 
 func infoText(s string) string {
 	console.SetColor("INFO", color.New(color.FgGreen, color.Bold))
@@ -115,6 +98,12 @@ func spinner(ctx context.Context, msg string) func(bool) bool {
 		var spinStopper func()
 		done := false
 
+		// if globalJSON {
+		// 	return func(bool) bool {
+		// 		return true
+		// 	}
+		// }
+
 		return func(cond bool) bool {
 			if done {
 				return done
@@ -151,25 +140,4 @@ func (p *progressReader) Read(b []byte) (int, error) {
 	}
 	p.progressChan <- int64(n)
 	return n, err
-}
-
-type contextReader struct {
-	r   io.Reader
-	ctx context.Context
-}
-
-func (c *contextReader) Read(b []byte) (int, error) {
-	select {
-	case <-c.ctx.Done():
-		return 0, c.ctx.Err()
-	default:
-		return c.r.Read(b)
-	}
-}
-
-func newContextReader(ctx context.Context, r io.Reader) *contextReader {
-	return &contextReader{
-		r:   r,
-		ctx: ctx,
-	}
 }

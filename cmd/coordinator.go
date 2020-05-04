@@ -26,45 +26,36 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
-	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/minio/minio/pkg/console"
 )
 
 var coordinatorMessage = `
 Run the following command on each of the other nodes.
-  $ bottlenet THIS-SERVER-ADDR
+  $ bottlenet THIS-SERVER-IP
 `
 
 var (
 	firstPeer         = false
 	selfStartCtx      context.Context
 	selfStartCancelFn func()
-	testChan          chan struct{}
 )
 
 func init() {
 	selfStartCtx, selfStartCancelFn = context.WithCancel(context.Background())
-	testChan = make(chan struct{})
 }
 
 func coordinate(ctx context.Context) error {
 	printCoordinatorMessage()
-	peers = []*node{
-		{
-			NodeType: nodeTypeSelf,
-			Addr:     getLocalIPs()[0],
-		},
-	}
-
-	go runTestController()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/join", listenJoin)
-	mux.HandleFunc("/start", listenStart)
+	mux.HandleFunc("/join", listenJoin(ctx))
+	mux.HandleFunc("/start", listenStart(ctx))
 	return serveBottlenet(ctx, mux)
 }
 
@@ -72,8 +63,7 @@ func doStart(ctx context.Context, coordinator string) (map[string][]*node, error
 	client := newClient()
 	perfMap := map[string][]*node{}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("http://%s/%s", coordinator, "start"), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s:7007/%s", coordinator, "start"), nil)
 	if err != nil {
 		return perfMap, err
 	}
@@ -85,11 +75,7 @@ func doStart(ctx context.Context, coordinator string) (map[string][]*node, error
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return perfMap, err
-		}
-		return perfMap, fmt.Errorf(string(respBody))
+		return perfMap, fmt.Errorf("bottlenet perf test canceled")
 	}
 
 	respBody, err := ioutil.ReadAll(resp.Body)
@@ -103,53 +89,58 @@ func doStart(ctx context.Context, coordinator string) (map[string][]*node, error
 	return perfMap, err
 }
 
-func listenStart(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	endpointsMap := map[string][]*node{}
+func listenStart(ctx context.Context) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		endpointsMap := map[string][]*node{}
 
-	for _, p := range peers {
-		if p.Addr == getLocalIPs()[0] {
-			continue
-		}
-		err := doPerf(ctx, p)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
-
-	for i, p := range peers {
-		remotes := []*node{}
-		for j, p := range peers {
-			if j >= i {
-				break
+		for _, p := range peers {
+			if p.Addr == getLocalIPs()[0] {
+				continue
 			}
-			pnew := new(node)
-			pnew.Addr = p.Addr
-			pnew.Perf = p.Perf
-			pnew.NodeType = p.NodeType
-			remotes = append(remotes, pnew)
+			err := doPerf(ctx, p)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
+				return
+			}
 		}
-		endpointsMap[p.Addr] = remotes
-	}
 
-	for addr, remotes := range endpointsMap {
-		if err := doDispatch(ctx, addr, remotes); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		for i, p := range peers {
+			remotes := []*node{}
+			for j, p := range peers {
+				if j >= i {
+					break
+				}
+				pnew := new(node)
+				pnew.Addr = p.Addr
+				pnew.Perf = p.Perf
+				pnew.NodeType = p.NodeType
+				remotes = append(remotes, pnew)
+			}
+			endpointsMap[p.Addr] = remotes
+		}
+
+		for addr, remotes := range endpointsMap {
+			if err := doDispatch(ctx, addr, remotes); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
+				return
+			}
+		}
+
+		dispatchMap, err := json.MarshalIndent(endpointsMap, "", " ")
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
 			return
 		}
-	}
 
-	dispatchMap, err := json.MarshalIndent(endpointsMap, "", " ")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		w.WriteHeader(http.StatusOK)
+		w.Write(dispatchMap)
 	}
-
-	w.Write(dispatchMap)
 }
 
-func doJoin(ctx context.Context, coordinator string, connbrk chan error) error {
+func doJoin(ctx context.Context, coordinator string, connbrk chan struct{}) error {
 	client := newClient()
 
 	n := &node{
@@ -162,8 +153,7 @@ func doJoin(ctx context.Context, coordinator string, connbrk chan error) error {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("http://%s/%s", coordinator, "join"), bytes.NewReader(nBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s:7007/%s", coordinator, "join"), bytes.NewReader(nBytes))
 	if err != nil {
 		return err
 	}
@@ -174,72 +164,59 @@ func doJoin(ctx context.Context, coordinator string, connbrk chan error) error {
 	}
 
 	go func() {
-		_, err := io.Copy(ioutil.Discard, resp.Body)
-		connbrk <- err
+		io.Copy(ioutil.Discard, resp.Body)
+		connbrk <- struct{}{}
 	}()
 
 	return nil
 }
 
-func listenJoin(w http.ResponseWriter, r *http.Request) {
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	p := &node{}
-	if err := json.Unmarshal(body, p); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if err := addPeer(p); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.(http.Flusher).Flush()
-	testChan <- struct{}{}
-	<-r.Context().Done()
-	fmt.Println("Peer disconnected. Exiting.")
-	os.Exit(1)
-	removePeer(p)
-}
-
-func runTestController() {
-	go func() {
-		key := make([]byte, 1)
-		os.Stdin.Read(key)
-		fmt.Println("running bottlenet tests...")
-		runTest()
-	}()
-	for range testChan {
-		if len(testChan) > 0 {
-			// only run after all nodes have joined
-			continue
+func listenJoin(ctx context.Context) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
 		}
 
-		console.RewindLines(viewLineCount)
-		fmt.Printf("%d peer(s) detected...press any key to begin tests...\n", len(peers)-1)
-		viewLineCount = 1
+		p := &node{}
+		if err := json.Unmarshal(body, p); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
 
+		if err := addPeer(p); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		go runTest()
+		<-r.Context().Done()
+		removePeer(p)
 	}
 }
 
 func runTest() {
 	selfStartCancelFn()
-	<-selfStartCtx.Done()
 	selfStartCtx, selfStartCancelFn = context.WithCancel(context.Background())
-
 	resp, err := doStart(selfStartCtx, getLocalIPs()[0])
 	if err != nil {
-		fmt.Println(err.Error())
+		if e, ok := err.(*url.Error); ok {
+			if e.Unwrap().Error() != context.Canceled.Error() {
+				fmt.Println(err)
+			}
+		} else {
+			fmt.Println(err)
+		}
 		return
 	}
 
 	printResults(resp)
-	selfStartCancelFn()
 }
 
 func printResults(results map[string][]*node) {
@@ -260,29 +237,17 @@ func printResults(results map[string][]*node) {
 	   and outgoing speed on a specific node are the same.
 	*/
 
-	exit := 0
-
-	defer func() {
-		fmt.Println("Exiting.")
-		os.Exit(exit)
-	}()
-
 	stackRankMap := map[string]float64{}
 	total := float64(0)
 	for kout := range results {
 		nodeAvgSum := float64(0)
-		nodeMax := float64(0)
+		nodeMaxSum := float64(0)
 		for kin, v := range results {
 			if kin == kout {
 				for _, vi := range v {
 					for _, vx := range vi.Perf {
 						nodeAvgSum = nodeAvgSum + vx.Throughput.Avg
-						nodeMax = func() float64 {
-							if vx.Throughput.Max > nodeMax {
-								return vx.Throughput.Max
-							}
-							return nodeMax
-						}()
+						nodeMaxSum = nodeMaxSum + vx.Throughput.Max
 						total = total + vx.Throughput.Avg
 					}
 				}
@@ -292,18 +257,14 @@ func printResults(results map[string][]*node) {
 				for kx, vx := range vi.Perf {
 					if kx == kout {
 						nodeAvgSum = nodeAvgSum + vx.Throughput.Avg
-						nodeMax = func() float64 {
-							if vx.Throughput.Max > nodeMax {
-								return vx.Throughput.Max
-							}
-							return nodeMax
-						}()
+						nodeMaxSum = nodeMaxSum + vx.Throughput.Max
 					}
 				}
 			}
 		}
-		stackRankMap[kout] = nodeMax
+		stackRankMap[kout] = nodeAvgSum
 	}
+	// viewLineCount += 3
 
 	stackRankKeys := []string{}
 
@@ -317,58 +278,55 @@ func printResults(results map[string][]*node) {
 		return stackRankMap[left] < stackRankMap[right]
 	})
 
+	console.RewindLines(1)
+	viewLineCount--
+
 	max := float64(0)
 	avg := float64(0)
 	for _, k := range stackRankMap {
-		k = k / float64(len(stackRankMap)-1)
+		k = k / float64(len(stackRankMap))
 		avg = avg + k
 		if k > max {
 			max = k
 		}
 	}
 
-	// avg = avg / float64(len(stackRankKeys))
-	// fmt.Printf("Slowest nodes in your network:\n")
-	// for n, k := range stackRankKeys {
-	//     s := stackRankMap[k]
-	//     ks := k + strings.Repeat(" ", 21-len(k))
-	//     fmt.Printf("%d. %s : %s/s \n", n+1, ks, humanize.IBytes(uint64(s)))
-	// }
+	avg = avg / float64(len(stackRankKeys))
+	fmt.Printf("Total Throughput : %s/s (max)  %s/s (avg) \n\n", humanize.IBytes(uint64(max)), humanize.IBytes(uint64(avg)))
 
-	resJSON, err := json.MarshalIndent(results, "", " ")
-	if err != nil {
-		fmt.Println(err)
-		exit = 1
-		return
+	fmt.Printf("Slowest nodes in your network:\n")
+	// viewLineCount += 1
+
+	for n, k := range stackRankKeys {
+		s := stackRankMap[k]
+		ks := k + strings.Repeat(" ", 14-len(k))
+		fmt.Printf("%d. %s : %s/s \n", n+1, ks, humanize.IBytes(uint64(s/float64(len(stackRankKeys)))))
+		// viewLineCount += 1
+		if n == 2 {
+			break
+		}
 	}
 
-	filename := fmt.Sprintf("bottlenet_%s.json", time.Now().Format("20060102150405"))
-	f, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0666)
-	if err != nil {
-		fmt.Println(err)
-		exit = 1
-		return
-	}
-	defer f.Close()
+loop:
+	fmt.Printf("\npress Ctrl + c to exit. press 'y' to rerun... ")
+	ans := make([]byte, 2)
+	os.Stdin.Read(ans)
 
-	_, err = f.Write(resJSON)
-	if err != nil {
-		fmt.Println(err)
-		exit = 1
-		return
+	if string(ans[0]) == "y" {
+		runTest()
 	}
-	fmt.Println("Bottlenet results saved to", filename)
+	if string(ans[0]) == "\n" {
+		console.RewindLines(1)
+	}
+	goto loop
 }
 
 func printCoordinatorMessage() {
-	coordMsg := strings.ReplaceAll(coordinatorMessage, "THIS-SERVER-ADDR", getLocalIPs()[0])
-	fmt.Printf("%s\n", coordMsg)
+	coordMsg := strings.ReplaceAll(coordinatorMessage, "THIS-SERVER-PORT", fmt.Sprintf("%d", bottlenetPort))
+	fmt.Printf("%s\n", strings.ReplaceAll(coordMsg, "THIS-SERVER-IP", getLocalIPs()[0]))
 }
 
 func getLocalIPs() []string {
-	if address != ":7007" {
-		return []string{address}
-	}
 	ips := []string{}
 
 	interfaceAddrs, err := net.InterfaceAddrs()
@@ -381,7 +339,7 @@ func getLocalIPs() []string {
 		for _, inter := range interfaceAddrs {
 			ip, _, _ := net.ParseCIDR(inter.String())
 			if !ip.IsLoopback() {
-				toRet = append(toRet, fmt.Sprintf("%s:7007", ip.String()))
+				toRet = append(toRet, ip.String())
 			}
 		}
 		return toRet
