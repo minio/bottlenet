@@ -21,6 +21,7 @@ import (
 	"github.com/montanaflynn/stats"
 )
 
+// Perf holds latency and throughput information for a particular node
 type Perf struct {
 	Latency    Latency
 	Throughput Throughput
@@ -46,7 +47,7 @@ type Throughput struct {
 	Max          float64 `json:"max_bytes_per_sec,omitempty"`
 }
 
-// ComputeOBDStats takes arrays of Latency & Throughput to compute Statistics
+// ComputePerf takes arrays of Latency & Throughput to compute Statistics
 func ComputePerf(latencies, throughputs []float64) (Perf, error) {
 	var avgLatency float64
 	var percentile50Latency float64

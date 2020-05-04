@@ -19,21 +19,28 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 )
 
 func peer(ctx context.Context, coordinator string) error {
 	peerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	connbrk := make(chan struct{})
+	connbrk := make(chan error)
 	if err := doJoin(peerCtx, coordinator, connbrk); err != nil {
-		fmt.Println(err)
 		return err
 	}
 
 	go func() {
-		<-connbrk
+		if err := <-connbrk; err != nil {
+			if errors.Is(err, context.Canceled) {
+				fmt.Println("connection closed")
+			} else if !errors.Is(err, io.ErrUnexpectedEOF) {
+				fmt.Println(err.Error())
+			}
+		}
 		cancel()
 	}()
 

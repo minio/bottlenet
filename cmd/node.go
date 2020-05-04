@@ -22,7 +22,6 @@ import (
 	"sync"
 
 	"github.com/minio/bottlenet/pkg/perf"
-	"github.com/minio/minio/pkg/console"
 )
 
 var (
@@ -31,15 +30,6 @@ var (
 
 	c cluster
 )
-
-func init() {
-	peers = []*node{
-		{
-			NodeType: nodeTypeSelf,
-			Addr:     getLocalIPs()[0],
-		},
-	}
-}
 
 type nodeType int
 
@@ -91,7 +81,6 @@ func addPeer(p *node) error {
 	nodeLock.Lock()
 
 	peers = append(peers, p)
-	updateView()
 
 	nodeLock.Unlock()
 
@@ -113,7 +102,6 @@ func removePeer(p *node) {
 		newpeers = append(newpeers, peers[1+todel:]...)
 		peers = newpeers
 	}
-	updateView()
 	nodeLock.Unlock()
 }
 
@@ -126,15 +114,3 @@ type view struct {
 }
 
 var viewLineCount int
-
-func updateView() error {
-	if viewLineCount > 0 {
-		console.RewindLines(viewLineCount)
-		viewLineCount = 0
-	}
-
-	console.Printf("Total nodes      : %d\n\n", len(peers))
-	viewLineCount = 2
-
-	return nil
-}

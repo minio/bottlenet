@@ -21,12 +21,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -58,11 +60,11 @@ func serveBottlenet(ctx context.Context, mux *http.ServeMux) error {
 	if mux == nil {
 		defaultMux = http.NewServeMux()
 	}
-	defaultMux.HandleFunc("/perf", listenPerf(ctx))
-	defaultMux.HandleFunc("/dispatch", listenDispatch(ctx))
+	defaultMux.HandleFunc("/perf", listenPerf)
+	defaultMux.HandleFunc("/dispatch", listenDispatch)
 
 	server := http.Server{
-		Addr:    fmt.Sprintf(":%d", bottlenetPort),
+		Addr:    address,
 		Handler: defaultMux,
 		BaseContext: func(net.Listener) context.Context {
 			return ctx
@@ -77,14 +79,22 @@ func serveBottlenet(ctx context.Context, mux *http.ServeMux) error {
 		for {
 			select {
 			case err := <-errChan:
-				fmt.Println(err)
+				if errors.Is(err, context.Canceled) {
+					fmt.Println(err.Error())
+				}
 				done <- server.Shutdown(ctx)
 			case <-ctx.Done():
 				done <- server.Shutdown(ctx)
 			}
 		}
 	}()
-	return <-done
+	err := <-done
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			fmt.Println(err.Error())
+		}
+	}
+	return err
 }
 
 func doDispatch(ctx context.Context, addr string, remotes []*node) error {
@@ -95,7 +105,10 @@ func doDispatch(ctx context.Context, addr string, remotes []*node) error {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s:7007/%s", addr, "dispatch"), bytes.NewReader(jsonData))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		fmt.Sprintf("http://%s/%s", addr, "dispatch"),
+		bytes.NewReader(jsonData),
+	)
 	if err != nil {
 		return err
 	}
@@ -110,43 +123,35 @@ func doDispatch(ctx context.Context, addr string, remotes []*node) error {
 		return err
 	}
 
-	//fmt.Println(string(respBody))
-
 	return json.Unmarshal(respBody, &remotes)
 }
 
-func listenDispatch(ctx context.Context) func(w http.ResponseWriter, r *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return
-		}
-
-		p := &[]*node{}
-		if err := json.Unmarshal(body, p); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return
-		}
-
-		for _, px := range *p {
-			if err := doPerf(ctx, px); err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte(err.Error()))
-				return
-			}
-		}
-		respBody, err := json.Marshal(p)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		w.Write(respBody)
+func listenDispatch(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+
+	p := &[]*node{}
+	if err := json.Unmarshal(body, p); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	for _, px := range *p {
+		if err := doPerf(ctx, px); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	respBody, err := json.Marshal(p)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Write(respBody)
 }
 
 func doPerf(ctx context.Context, p *node) error {
@@ -161,84 +166,30 @@ func doPerf(ctx context.Context, p *node) error {
 	return nil
 }
 
-func listenPerf(ctx context.Context) func(w http.ResponseWriter, r *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Use this trailer to send additional headers after sending body
-		w.Header().Set("Trailer", "FinalStatus")
+func listenPerf(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	// Use this trailer to send additional headers after sending body
+	w.Header().Set("Trailer", "FinalStatus")
 
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.WriteHeader(http.StatusOK)
 
-		copyContext := func(ctx context.Context, dst io.Writer, src io.Reader) (written int64, err error) {
-			size := 32 * 1024
-			if l, ok := src.(*io.LimitedReader); ok && int64(size) > l.N {
-				if l.N < 1 {
-					size = 1
-				} else {
-					size = int(l.N)
-				}
-			}
-			buf := make([]byte, size)
-
-		loop:
-			for {
-				select {
-				case <-ctx.Done():
-					return written, ctx.Err()
-				default:
-					// If the reader has a WriteTo method, use it to do the copy.
-					// Avoids an allocation and a copy.
-					if wt, ok := src.(io.WriterTo); ok {
-						return wt.WriteTo(dst)
-					}
-
-					// Similarly, if the writer has a ReadFrom method, use it to do the copy.
-					if rt, ok := dst.(io.ReaderFrom); ok {
-						return rt.ReadFrom(src)
-					}
-					nr, er := src.Read(buf)
-					if nr > 0 {
-						nw, ew := dst.Write(buf[0:nr])
-						if nw > 0 {
-							written += int64(nw)
-						}
-						if ew != nil {
-							err = ew
-							break loop
-						}
-						if nr != nw {
-							err = io.ErrShortWrite
-							break loop
-						}
-					}
-					if er != nil {
-						if er != io.EOF {
-							err = er
-						}
-						break loop
-					}
-				}
-			}
-			return written, err
-		}
-
-		n, err := copyContext(ctx, ioutil.Discard, r.Body)
-		if err == io.ErrUnexpectedEOF {
-			w.Header().Set("FinalStatus", err.Error())
-			return
-		}
-		if err != nil && err != io.EOF {
-			w.Header().Set("FinalStatus", err.Error())
-			return
-		}
-		if n != r.ContentLength {
-			err := fmt.Errorf("bottlenet: short read: expected %d found %d", r.ContentLength, n)
-			w.Header().Set("FinalStatus", err.Error())
-			return
-		}
-		w.Header().Set("FinalStatus", "Success")
-		w.(http.Flusher).Flush()
+	n, err := io.Copy(ioutil.Discard, newContextReader(ctx, r.Body))
+	if err == io.ErrUnexpectedEOF {
+		w.Header().Set("FinalStatus", err.Error())
+		return
 	}
+	if err != nil && err != io.EOF {
+		w.Header().Set("FinalStatus", err.Error())
+		return
+	}
+	if n != r.ContentLength {
+		err := fmt.Errorf("bottlenet: short read: expected %d found %d", r.ContentLength, n)
+		w.Header().Set("FinalStatus", err.Error())
+		return
+	}
+	w.Header().Set("FinalStatus", "Success")
+	w.(http.Flusher).Flush()
 }
 
 func doFlood(ctx context.Context, remote string, dataSize int64, threadCount uint) (info perf.Perf, err error) {
@@ -311,16 +262,17 @@ loop:
 				ctx, cancel := context.WithTimeout(innerCtx, 10*time.Second)
 				defer cancel()
 
-				req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s:7007/%s", remote, "perf"), bufReadCloser)
+				req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+					fmt.Sprintf("http://%s/%s", remote, "perf"), bufReadCloser)
 				if err != nil {
 					errChan <- err
 					finish()
 					return
 				}
 				req.ContentLength = dataSize
-				resp, err := client.Do(req) //peerRESTMethodNetOBDInfo, nil, bufReadCloser, dataSize)
+				resp, err := client.Do(req)
 				if err != nil {
-					if err == context.DeadlineExceeded {
+					if errors.Is(err, context.DeadlineExceeded) {
 						slowSample()
 						finish()
 						return
@@ -439,14 +391,22 @@ func flood(ctx context.Context, remote string) (info perf.Perf, err error) {
 		threads := steps[i].threads
 
 		if info, err = doFlood(ctx, remote, size, threads); err != nil {
+			if ctx.Err() != nil {
+				return info, err
+			}
 			if err == networkOverloaded {
 				continue
 			}
-			if err == context.DeadlineExceeded {
-				continue
-			}
-			if err == context.Canceled {
-				continue
+
+			var urlErr *url.Error
+			if errors.As(err, &urlErr) {
+				ee := urlErr.Err
+				if errors.Is(ee, context.DeadlineExceeded) {
+					continue
+				}
+				if errors.Is(ee, context.Canceled) {
+					continue
+				}
 			}
 		}
 		return info, err
