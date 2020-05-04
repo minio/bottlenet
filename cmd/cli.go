@@ -25,6 +25,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	clientMode = false
+	serverMode = false
+)
+
 var bottlenetCmd = &cobra.Command{
 	Use: fmt.Sprintf("%s [IP...] [-a]", os.Args[0]),
 	RunE: func(c *cobra.Command, args []string) error {
@@ -52,7 +57,8 @@ In order to bind bottlenet to specific interface and port
     $>_ bottlenet --adddress IP:PORT
 
 Note: --address can be applied to both control and peer nodes
-
+Note: bottlenet can also be used to find bottlenecks in client -> server network instead of a mesh network
+      try 'bottlenet client --help'
 `,
 }
 
@@ -61,7 +67,9 @@ var (
 )
 
 func init() {
-	bottlenetCmd.Flags().StringVarP(&address, "address", "a", address, "listen address")
+	bottlenetCmd.PersistentFlags().StringVarP(&address, "address", "a", address, "listen address")
+	bottlenetCmd.PersistentFlags().BoolVarP(&clientMode, "client", "c", clientMode, "run in client mode")
+	bottlenetCmd.PersistentFlags().BoolVarP(&serverMode, "server", "s", serverMode, "run in server mode")
 }
 
 // Execute runs the binary

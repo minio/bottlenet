@@ -36,7 +36,15 @@ import (
 
 var coordinatorMessage = `
 Run the following command on each of the other nodes.
-  $ bottlenet THIS-SERVER-ADDR
+  $>_ bottlenet THIS-SERVER-ADDR
+`
+
+var clientServerMessage = `
+Run the following command on each of the server nodes.
+  $>_ bottlenet --server THIS-SERVER-ADDR
+
+Run the following command on each of the client nodes.
+  $>_ bottlenet --client THIS-SERVER-ADDR
 `
 
 var (
@@ -51,13 +59,20 @@ func init() {
 	testChan = make(chan struct{})
 }
 
-func coordinate(ctx context.Context) error {
-	printCoordinatorMessage()
+func bottlenet(ctx context.Context) error {
+	printBottlenetMessage()
 	peers = []*node{
 		{
 			NodeType: nodeTypeSelf,
 			Addr:     getLocalIPs()[0],
 		},
+	}
+
+	if clientMode {
+		peers[0].NodeType = nodeTypeClient
+	}
+	if serverMode {
+		peers[0].NodeType = nodeTypeServer
 	}
 
 	go runTestController()
@@ -108,6 +123,9 @@ func listenStart(w http.ResponseWriter, r *http.Request) {
 	endpointsMap := map[string][]*node{}
 
 	for _, p := range peers {
+		if clientMode || serverMode {
+			break
+		}
 		if p.Addr == getLocalIPs()[0] {
 			continue
 		}
@@ -121,7 +139,7 @@ func listenStart(w http.ResponseWriter, r *http.Request) {
 	for i, p := range peers {
 		remotes := []*node{}
 		for j, p := range peers {
-			if j >= i {
+			if j >= i && !clientMode && !serverMode {
 				break
 			}
 			pnew := new(node)
@@ -155,6 +173,13 @@ func doJoin(ctx context.Context, coordinator string, connbrk chan error) error {
 	n := &node{
 		NodeType: nodeTypePeer,
 		Addr:     getLocalIPs()[0],
+	}
+
+	if clientMode {
+		n.NodeType = nodeTypeClient
+	}
+	if serverMode {
+		n.NodeType = nodeTypeServer
 	}
 
 	nBytes, err := json.Marshal(n)
@@ -360,7 +385,12 @@ func printResults(results map[string][]*node) {
 	fmt.Println("Bottlenet results saved to", filename)
 }
 
-func printCoordinatorMessage() {
+func printBottlenetMessage() {
+	if serverMode || clientMode {
+		clientServerMsg := strings.ReplaceAll(clientServerMessage, "THIS-SERVER-ADDR", getLocalIPs()[0])
+		fmt.Printf("%s\n", clientServerMsg)
+		return
+	}
 	coordMsg := strings.ReplaceAll(coordinatorMessage, "THIS-SERVER-ADDR", getLocalIPs()[0])
 	fmt.Printf("%s\n", coordMsg)
 }

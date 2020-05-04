@@ -140,13 +140,25 @@ func listenDispatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, px := range *p {
-		if err := doPerf(ctx, px); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+	resp := []*node{}
+	if !serverMode {
+		for _, px := range *p {
+			if clientMode {
+				if px.NodeType != nodeTypeServer {
+					continue
+				}
+				if px.Addr == getLocalIPs()[0] {
+					continue
+				}
+			}
+			if err := doPerf(ctx, px); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			resp = append(resp, px)
 		}
 	}
-	respBody, err := json.Marshal(p)
+	respBody, err := json.Marshal(resp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

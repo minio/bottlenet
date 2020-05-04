@@ -41,17 +41,25 @@ func bottlenetEntrypoint(ctx context.Context, args []string) error {
 		cancel()
 	}()
 
-	c.clusterType = clusterTypeMesh
-	meshCtx, cancel := context.WithCancel(mainCtx)
+	if clientMode || serverMode {
+		c.clusterType = clusterTypeClientServer
+	} else {
+		c.clusterType = clusterTypeMesh
+	}
+
+	netCtx, cancel := context.WithCancel(mainCtx)
 	defer cancel()
 
 	if len(args) > 0 {
-		return peer(meshCtx, args[0])
+		return peer(netCtx, args[0])
 	}
-	return coordinate(meshCtx)
+	return bottlenet(netCtx)
 }
 
 func validateArgs(args []string) error {
+	if clientMode && serverMode {
+		return fmt.Errorf("bottlenet cannot run in both client and server modes")
+	}
 	if len(args) > 1 {
 		return fmt.Errorf("extra argument for mesh network. expected 1 argument only")
 	}

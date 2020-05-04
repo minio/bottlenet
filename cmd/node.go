@@ -65,7 +65,14 @@ type cluster struct {
 
 func addPeer(p *node) error {
 	if c.clusterType != clusterTypeMesh {
-		panic(fmt.Errorf("cannot add peer in client-server mode"))
+		//panic(fmt.Errorf("cannot add peer in client-server mode"))
+		if p.NodeType != nodeTypeClient && p.NodeType != nodeTypeServer {
+			return fmt.Errorf("could not admit mesh peer to a client-server cluster")
+		}
+	} else {
+		if p.NodeType != nodeTypePeer {
+			return fmt.Errorf("could not admit client-server peer to mesh cluster")
+		}
 	}
 
 	if p == nil {
@@ -73,9 +80,6 @@ func addPeer(p *node) error {
 	}
 	if p.Addr == "" {
 		return fmt.Errorf("peer addr cannot be empty")
-	}
-	if p.NodeType != nodeTypePeer {
-		return fmt.Errorf("peer type not set correctly")
 	}
 
 	nodeLock.Lock()
