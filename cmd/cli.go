@@ -39,16 +39,17 @@ var bottlenetCmd = &cobra.Command{
 	SilenceUsage:          true,
 	SilenceErrors:         true,
 	Long: `
-Bottlenet finds bottlenecks in your cluster
+Bottlenet finds bottlenecks in your cluster network
 
-Steps to find bottlenecks using bottlenet:
+Steps to find bottlenecks in network using bottlenet:
+
 1. Run 1 instance of bottlenet on control node, where output will be collected:
 
     $>_ bottlenet 
 
 2. Run 1 instance of bottlenet on each of the peer nodes:
 
-    $>_ bottlenet CONTROL-SERVER:IP 
+    $>_ bottlenet CONTROL-SERVER-IP:PORT
 
 Once all the peer nodes have been added, press 'y' on the prompt (on control node) to start the tests
 
@@ -57,8 +58,8 @@ In order to bind bottlenet to specific interface and port
     $>_ bottlenet --adddress IP:PORT
 
 Note: --address can be applied to both control and peer nodes
-Note: bottlenet can also be used to find bottlenecks in client -> server network instead of a mesh network
-      try 'bottlenet client --help'
+
+    $>_ bottlenet --address IP:PORT CONTROL-SERVER-IP:PORT
 `,
 }
 
