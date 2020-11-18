@@ -43,23 +43,23 @@ Bottlenet finds bottlenecks in your cluster network
 
 Steps to find bottlenecks in network using bottlenet:
 
-1. Run 1 instance of bottlenet on control node, where output will be collected:
+1. Run one instance of bottlenet on control node, where output will be collected:
 
-    $>_ bottlenet 
+  $>_ bottlenet
 
-2. Run 1 instance of bottlenet on each of the peer nodes:
+2. Run one instance of bottlenet on each of the peer nodes:
 
-    $>_ bottlenet CONTROL-SERVER-IP:PORT
+  $>_ bottlenet CONTROL-SERVER-IP:PORT
 
-Once all the peer nodes have been added, press 'y' on the prompt (on control node) to start the tests
+Once all the peer nodes have been added, press 'y' on the prompt (on control node) to start the tests.
 
 In order to bind bottlenet to specific interface and port
 
-    $>_ bottlenet --adddress IP:PORT
+  $>_ bottlenet --adddress IP:PORT
 
-Note: --address can be applied to both control and peer nodes
+Note: --address should be applied to both control and peer nodes
 
-    $>_ bottlenet --address IP:PORT CONTROL-SERVER-IP:PORT
+  $>_ bottlenet --address IP:PORT CONTROL-SERVER-IP:PORT
 `,
 }
 
@@ -69,8 +69,9 @@ var (
 
 func init() {
 	bottlenetCmd.PersistentFlags().StringVarP(&address, "address", "a", address, "listen address")
-	bottlenetCmd.PersistentFlags().BoolVarP(&clientMode, "client", "c", clientMode, "run in client mode")
-	bottlenetCmd.PersistentFlags().BoolVarP(&serverMode, "server", "s", serverMode, "run in server mode")
+	// Turned-off for now
+	// bottlenetCmd.PersistentFlags().BoolVarP(&clientMode, "client", "c", clientMode, "run in client mode")
+	// bottlenetCmd.PersistentFlags().BoolVarP(&serverMode, "server", "s", serverMode, "run in server mode")
 }
 
 // Execute runs the binary
